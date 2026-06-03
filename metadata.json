@@ -1,0 +1,6 @@
+{
+  "name": "Academic Operating System",
+  "description": "A comprehensive scholastic workspace featuring Apple Notes rich styling, live lecture video/audio transcription, whiteboard snap OCR scanner, and retrieval-based Academic Memory synthesis.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
