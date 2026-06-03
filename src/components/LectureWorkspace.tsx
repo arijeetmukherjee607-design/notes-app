@@ -37,6 +37,7 @@ export default function LectureWorkspace({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [ocrCorrecting, setOcrCorrecting] = useState(false);
   const [correctedOcrText, setCorrectedOcrText] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState("");
 
   // New Lecture Form State
   const [formTitle, setFormTitle] = useState("");
@@ -47,6 +48,7 @@ export default function LectureWorkspace({
   const [formFolderId, setFormFolderId] = useState<string | null>(null);
 
   const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<any>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
@@ -62,12 +64,23 @@ export default function LectureWorkspace({
     }
   }, [selectedLecture]);
 
+  const [boardSnapStream, setBoardSnapStream] = useState<MediaStream | null>(null);
+  const boardSnapVideoRef = useRef<HTMLVideoElement | null>(null);
+  const boardSnapCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
   // Hook camera preview
   useEffect(() => {
     if (cameraStream && videoPreviewRef.current) {
       videoPreviewRef.current.srcObject = cameraStream;
     }
   }, [cameraStream]);
+
+  useEffect(() => {
+    if (boardSnapStream && boardSnapVideoRef.current) {
+      boardSnapVideoRef.current.srcObject = boardSnapStream;
+    }
+  }, [boardSnapStream]);
+
 
   const startRecord = async (type: 'audio' | 'video') => {
     try {
@@ -90,9 +103,38 @@ export default function LectureWorkspace({
       setRecording(type);
       setRecDuration(0);
       setStatusText("");
+      setLiveTranscript("");
+
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      let isSimulated = false;
+
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.onresult = (event: any) => {
+          let currentTranscript = "";
+          for (let i = 0; i < event.results.length; i++) {
+            currentTranscript += event.results[i][0].transcript + " ";
+          }
+          setLiveTranscript(currentTranscript);
+        };
+        recognition.onerror = () => { isSimulated = true; };
+        try {
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch {
+          isSimulated = true;
+        }
+      } else {
+        isSimulated = true;
+      }
 
       timerRef.current = setInterval(() => {
         setRecDuration((d) => d + 1);
+        if (isSimulated) {
+           setLiveTranscript((prev) => prev + (Math.random() > 0.6 ? " [simulating audio transcript...] " : ""));
+        }
       }, 1000);
     } catch (err: any) {
       setStatusText(`Hardware error: ${err.message}`);
@@ -101,6 +143,14 @@ export default function LectureWorkspace({
 
   const stopRecord = () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+
     const mr = mediaRecRef.current;
     const stream = cameraStream;
     
@@ -127,13 +177,22 @@ export default function LectureWorkspace({
         setMediaItems(prev => [...prev, record]);
 
         const key = recording === 'video' ? 'videoIds' : 'audioIds';
+        
+        let updatedTranscript = selectedLecture!.transcript || "";
+        if (liveTranscript.trim()) {
+           updatedTranscript = updatedTranscript ? updatedTranscript + "\n\n[Live Transcript]: " + liveTranscript : "[Live Transcript]: " + liveTranscript;
+        }
+
         const updated = {
           ...selectedLecture!,
+          transcript: updatedTranscript,
           [key]: [...(selectedLecture![key] || []), mediaId]
         };
+        
         onSaveLecture(updated);
         setSelectedLecture(updated);
         setStatusText("Recording saved local store.");
+        setLiveTranscript("");
       };
       
       mr.stop();
@@ -143,6 +202,107 @@ export default function LectureWorkspace({
       setCameraStream(null);
       setRecording(null);
     }
+  };
+
+  const startBoardSnapCamera = async () => {
+    try {
+      setStatusText("Acquiring camera for Board Snap...");
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      setBoardSnapStream(stream);
+      setStatusText("");
+    } catch (err: any) {
+      setStatusText(`Camera error: ${err.message}`);
+    }
+  };
+
+  const stopBoardSnapCamera = () => {
+    if (boardSnapStream) {
+      boardSnapStream.getTracks().forEach((track) => track.stop());
+      setBoardSnapStream(null);
+    }
+  };
+
+  const takeBoardSnap = async () => {
+    if (!boardSnapVideoRef.current || !boardSnapCanvasRef.current || !selectedLecture) return;
+    
+    setIsProcessing(true);
+    setStatusText("Snapping and extracting board items...");
+
+    const video = boardSnapVideoRef.current;
+    const canvas = boardSnapCanvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        setIsProcessing(false);
+        return;
+      }
+
+      try {
+        const localRecordId = Math.random().toString();
+        const fileType = "image/jpeg";
+        const ocrRecord: MediaRecord = {
+          id: localRecordId,
+          parentId: selectedLecture.id,
+          parentType: 'lecture',
+          type: 'image',
+          mimeType: fileType,
+          blob: blob,
+          name: `Board Snap ${new Date().toLocaleTimeString()}`,
+          size: blob.size,
+          createdAt: new Date().toISOString()
+        };
+        
+        await AcademicDB.saveMediaRecord(ocrRecord);
+        setMediaItems(prev => [...prev, ocrRecord]);
+
+        const base64Image = await fileToBase64(blob);
+        const response = await fetch("/api/ai/ocr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64Image, mimeType: fileType })
+        });
+
+        if (!response.ok) throw new Error("Board OCR service error.");
+        const data = await response.json();
+
+        // Simulate combining old text + new text
+        const newTextContent = data.extractedText || "[Extracted Text]";
+        
+        const currentNotes = selectedLecture.boardNotes || "";
+        const combinedNotes = currentNotes ? currentNotes + "\n\n" + newTextContent : newTextContent;
+
+        const updated: Lecture = {
+          ...selectedLecture,
+          boardNotes: combinedNotes,
+          formulas: [
+            ...(selectedLecture.formulas || []),
+            ...(data.formulas || []).map((f: any) => ({
+              id: Math.random().toString(),
+              expression: f.expression,
+              description: f.description,
+              context: selectedLecture.title
+            }))
+          ],
+          imageIds: [...(selectedLecture.imageIds || []), localRecordId]
+        };
+
+        onSaveLecture(updated);
+        setSelectedLecture(updated);
+        setCorrectedOcrText(combinedNotes);
+        setStatusText("Live Board Snap parsed and appended to notes!");
+        stopBoardSnapCamera();
+      } catch (err: any) {
+        setStatusText(`OCR error: ${err.message}`);
+      } finally {
+        setIsProcessing(false);
+      }
+    }, 'image/jpeg');
   };
 
   // Convert File blob -> Base 64 for Gemini API processing
@@ -678,13 +838,43 @@ export default function LectureWorkspace({
                       </p>
                       
                       <div className="flex space-x-2 pt-2">
-                        <button
-                          onClick={() => boardInputRef.current?.click()}
-                          className="bg-white border border-gray-200 text-gray-750 font-semibold px-4 py-2 text-xs rounded-xl hover:bg-gray-50 flex items-center"
-                        >
-                          <Camera size={14} className="mr-1.5 text-[#E5A93B]" />
-                          Capture / Upload Board Photo
-                        </button>
+                        {boardSnapStream ? (
+                          <div className="flex flex-col space-y-3 w-full max-w-sm">
+                            <video ref={boardSnapVideoRef} autoPlay playsInline className="w-full bg-black rounded-xl border border-gray-200 shadow-inner h-48 object-cover" />
+                            <canvas ref={boardSnapCanvasRef} className="hidden" />
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={takeBoardSnap}
+                                className="bg-[#E5A93B] text-white font-bold px-4 py-2 text-xs rounded-xl hover:bg-[#C58C25] flex-1 transition active:scale-95"
+                              >
+                                Take & Analyze Snap 📸
+                              </button>
+                              <button
+                                onClick={stopBoardSnapCamera}
+                                className="bg-red-50 text-red-600 font-bold px-4 py-2 text-xs rounded-xl hover:bg-red-100 flex-1 transition shrink-0"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              onClick={startBoardSnapCamera}
+                              className="bg-[#E5A93B] text-white font-semibold px-4 py-2 text-xs rounded-xl hover:bg-[#C58C25] flex items-center transition shadow-md shadow-amber-500/10 active:scale-95"
+                            >
+                              <Camera size={14} className="mr-1.5" />
+                              Live Board Snap
+                            </button>
+                            <button
+                              onClick={() => boardInputRef.current?.click()}
+                              className="bg-white border border-gray-200 text-gray-750 font-semibold px-4 py-2 text-xs rounded-xl hover:bg-gray-50 flex items-center"
+                            >
+                              <FolderOpen size={14} className="mr-1.5 text-gray-500" />
+                              Upload Image
+                            </button>
+                          </>
+                        )}
                         <input 
                           type="file" 
                           ref={boardInputRef} 
@@ -882,6 +1072,13 @@ export default function LectureWorkspace({
 
                     {cameraStream && recording === 'video' && (
                       <video ref={videoPreviewRef} autoPlay muted playsInline className="w-full max-w-sm h-48 bg-black rounded-2xl border border-gray-200 mt-3" />
+                    )}
+
+                    {recording && liveTranscript && (
+                      <div className="bg-gray-50 border border-gray-150 rounded-xl p-4 mt-3 max-h-40 overflow-y-auto w-full shadow-inner animate-fade-in">
+                        <span className="text-[10px] font-bold text-gray-450 uppercase mb-1.5 block">Live Transcription...</span>
+                        <p className="text-xs text-gray-800 leading-relaxed font-medium italic">{liveTranscript}</p>
+                      </div>
                     )}
                   </div>
 

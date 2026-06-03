@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Folder as FolderIcon, FolderPlus, Compass, BookOpen, FlaskConical, 
-  ChevronRight, ChevronDown, Plus, Trash2, Hash, BookOpenCheck, ListTodo, Star
+  ChevronRight, ChevronDown, Plus, Trash2, Hash, BookOpenCheck, ListTodo, Star,
+  HardDrive
 } from "lucide-react";
 import { Folder, Tag } from "../types";
 
@@ -17,6 +18,7 @@ interface SidebarProps {
   onCreateFolder: (name: string, parentId: string | null) => void;
   onDeleteFolder: (id: string) => void;
   onCreateTag: (name: string) => void;
+  onOpenStorageInspector?: () => void;
 }
 
 export default function Sidebar({
@@ -30,7 +32,8 @@ export default function Sidebar({
   onSelectSection,
   onCreateFolder,
   onDeleteFolder,
-  onCreateTag
+  onCreateTag,
+  onOpenStorageInspector
 }: SidebarProps) {
   const [expandedFolders, setExpandedFolders] = useState<string[]>([]);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
@@ -39,6 +42,19 @@ export default function Sidebar({
   
   const [showNewTagInput, setShowNewTagInput] = useState(false);
   const [newTagName, setNewTagName] = useState("");
+  
+  const [storageUsage, setStorageUsage] = useState({ used: 0, total: 0 });
+
+  useEffect(() => {
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then((estimate) => {
+        setStorageUsage({
+          used: estimate.usage || 0,
+          total: estimate.quota || 0,
+        });
+      });
+    }
+  }, []);
 
   const toggleExpand = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -271,12 +287,37 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Branded Footer */}
-      <div className="p-3 border-t border-[#E5E5E5] bg-[#E7E7E2] text-center flex flex-col space-y-1">
-        <span className="text-[10px] text-[#8E8E93] uppercase font-bold tracking-wider">AOS Engine v1.0.0</span>
-        <div className="flex items-center justify-center space-x-1.5 text-[9px] text-[#D19A00] font-semibold">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#27C93F] animate-pulse" />
-          <span>OFFLINE SECURE WORKSPACE</span>
+      {/* Branded Footer / Storage Status */}
+      <div 
+        className="p-3 border-t border-[#E5E5E5] bg-[#E7E7E2] flex flex-col space-y-2 cursor-pointer hover:bg-[#DEDEC9] transition-colors"
+        onClick={onOpenStorageInspector}
+        title="View Storage Inspector"
+      >
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center space-x-1.5 text-[9px] text-[#D19A00] font-semibold tracking-wide">
+            <HardDrive size={10} />
+            <span>LOCAL STORAGE</span>
+          </div>
+          <span className="text-[9px] text-[#8E8E93] font-bold">
+            {storageUsage.total > 0 ? `${(storageUsage.used / 1024 / 1024 / 1024).toFixed(2)} GB` : "0 GB"} used
+          </span>
+        </div>
+        
+        {storageUsage.total > 0 && (
+          <div className="w-full h-1.5 bg-[#Dcdcde] rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-[#E5A93B] rounded-full" 
+              style={{ width: `${Math.min((storageUsage.used / storageUsage.total) * 100, 100)}%` }}
+            />
+          </div>
+        )}
+
+        <div className="text-center pt-1 mt-1 border-t border-[#D5D5D0]">
+          <span className="text-[9px] text-[#8E8E93] uppercase font-bold tracking-widest">AOS Engine v1.0.0</span>
+          <div className="flex items-center justify-center space-x-1.5 text-[8px] text-[#27C93F] font-bold mt-0.5 tracking-wider">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#27C93F] animate-pulse shadow-[0_0_4px_#27C93F]" />
+            <span>OFFLINE SECURE WORKSPACE</span>
+          </div>
         </div>
       </div>
 

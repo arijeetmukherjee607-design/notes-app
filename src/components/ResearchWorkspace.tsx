@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { 
   FlaskConical, Plus, Trash2, ListTodo, Clipboard, Sparkles, CheckSquare, 
-  Square, CheckCircle2, ChevronRight, BookmarkCheck, Calendar, Activity
+  Square, CheckCircle2, ChevronRight, BookmarkCheck, Calendar, Activity,
+  Image as ImageIcon
 } from "lucide-react";
 import { ResearchProject, ExperimentalLog, Folder, Tag } from "../types";
+import MediaGallery from "./MediaGallery";
 
 interface ResearchWorkspaceProps {
   projects: ResearchProject[];
@@ -29,7 +31,7 @@ export default function ResearchWorkspace({
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   
-  const [activeSegment, setActiveSegment] = useState<'projects' | 'labs'>('projects');
+  const [activeSegment, setActiveSegment] = useState<'projects' | 'labs' | 'media'>('projects');
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isCreatingLog, setIsCreatingLog] = useState(false);
 
@@ -126,6 +128,7 @@ export default function ResearchWorkspace({
           >
             <option value="projects">📂 Active Research Projects</option>
             <option value="labs">🔬 Experimental Lab Briefs</option>
+            <option value="media">📸 Media & Assets Gallery</option>
           </select>
         </div>
 
@@ -160,7 +163,7 @@ export default function ResearchWorkspace({
                 </div>
               );
             })
-          ) : (
+          ) : activeSegment === 'labs' ? (
             logs.map((l) => {
               const isSelected = selectedLogId === l.id;
               return (
@@ -182,6 +185,11 @@ export default function ResearchWorkspace({
                 </div>
               );
             })
+          ) : (
+            <div className="p-8 text-center text-gray-400 text-sm">
+              <ImageIcon size={24} className="mx-auto mb-2 opacity-50" />
+              Viewing Global Media Gallery
+            </div>
           )}
         </div>
       </div>
@@ -190,7 +198,9 @@ export default function ResearchWorkspace({
       <div className="flex-1 overflow-y-auto flex flex-col h-full bg-slate-50">
         
         {/* Creating / Uploading State form */}
-        {isCreatingProject ? (
+        {activeSegment === 'media' ? (
+          <MediaGallery />
+        ) : isCreatingProject ? (
           <div className="p-8 max-w-2xl mx-auto w-full bg-white border border-gray-200 rounded-3xl shadow-sm space-y-6 my-8">
             <h3 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-3 flex items-center">
               <ListTodo size={18} className="mr-2 text-[#E5A93B]" /> Initiate Research Project Proposal

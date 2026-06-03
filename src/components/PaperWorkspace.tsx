@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { ResearchPaper, Folder, Tag, MediaRecord } from "../types";
 import { AcademicDB } from "../storage/db";
+import AnnotationLayer from "./AnnotationLayer";
 
 interface PaperWorkspaceProps {
   papers: ResearchPaper[];
@@ -444,6 +445,7 @@ export default function PaperWorkspace({
             <div className="px-6 border-b border-gray-100 flex mt-4 space-x-1">
               {[
                 { id: 'brief', label: 'Paper Abstract Study' },
+                { id: 'viewer', label: 'Document Viewer' },
                 { id: 'highlights', label: `Highlights Margin (${(selectedPaper.highlights || []).length})` },
                 { id: 'citations', label: 'Citation Formatter' }
               ].map((tab) => (
@@ -497,6 +499,13 @@ export default function PaperWorkspace({
                       {selectedPaper.notes}
                     </p>
                   </div>
+                </div>
+              )}
+
+              {/* Document Viewer Annotations Layer */}
+              {activeTab === 'viewer' && (
+                <div className="h-full">
+                  <AnnotationLayer paper={selectedPaper} onSavePaper={onSavePaper} />
                 </div>
               )}
 

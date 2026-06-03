@@ -2,9 +2,11 @@ import React, { useState, useRef, useEffect } from "react";
 import { 
   Heading1, Heading2, List, CheckSquare, Table, Palette, Sparkles, 
   Trash2, Plus, RefreshCw, Star, Save, ArrowLeft, Image as ImageIcon,
-  Eraser, Undo, ChevronDown
+  Eraser, Undo, ChevronDown, Download
 } from "lucide-react";
 import { AcademicNote, Tag } from "../types";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 interface AppleNotesEditorProps {
   note: AcademicNote;
@@ -254,6 +256,28 @@ export default function AppleNotesEditor({
     setNewFormulaDesc("");
   };
 
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToPDF = async () => {
+    if (!editorRef.current) return;
+    setIsExporting(true);
+    try {
+      const canvas = await html2canvas(editorRef.current, { scale: 2, useCORS: true });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`${title || 'Note'}.pdf`);
+    } catch (error) {
+      console.error("Failed to export PDF", error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#FAFAFA] text-gray-900 font-sans">
       {/* iOS style Top Bar */}
@@ -267,6 +291,15 @@ export default function AppleNotesEditor({
         </button>
 
         <div className="flex items-center space-x-3">
+          <button 
+            onClick={exportToPDF}
+            disabled={isExporting}
+            className={`flex items-center space-x-1 px-3 py-1.5 rounded-full font-medium text-xs border border-gray-200 transition ${isExporting ? 'bg-gray-100 text-gray-400' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+          >
+            <Download size={14} />
+            <span>{isExporting ? 'Exporting...' : 'Export PDF'}</span>
+          </button>
+          
           <button 
             onClick={() => setStarred(!starred)} 
             className={`p-1.5 rounded-full transition ${starred ? "text-[#E5A93B]" : "text-gray-400 hover:text-gray-600"}`}
@@ -284,7 +317,7 @@ export default function AppleNotesEditor({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6 max-w-3xl mx-auto w-full space-y-6">
+      <div ref={editorRef} className="flex-1 overflow-y-auto px-6 py-6 max-w-3xl mx-auto w-full space-y-6 bg-[#FAFAFA]">
         {/* Title Block */}
         <input 
           type="text" 

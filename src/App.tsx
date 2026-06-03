@@ -9,9 +9,10 @@ import AcademicMemory from "./components/AcademicMemory";
 import LectureWorkspace from "./components/LectureWorkspace";
 import PaperWorkspace from "./components/PaperWorkspace";
 import ResearchWorkspace from "./components/ResearchWorkspace";
+import StorageInspectorModal from "./components/StorageInspectorModal";
 import { 
   Search, Plus, Sparkles, FolderPlus, Compass, BookOpen, Star,
-  BookmarkCheck, FlaskConical, ListTodo, FileText, Calendar, Trash2, ArrowUpRight
+  BookmarkCheck, FlaskConical, ListTodo, FileText, Calendar, Trash2, ArrowUpRight, Menu
 } from "lucide-react";
 
 export default function App() {
@@ -33,6 +34,8 @@ export default function App() {
   // Editor overlays states
   const [editingNote, setEditingNote] = useState<AcademicNote | null>(null);
   const [dbReady, setDbReady] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isStorageInspectorOpen, setIsStorageInspectorOpen] = useState(false);
 
   // Load and seed database on initial render (offline-first persistent storage)
   useEffect(() => {
@@ -308,6 +311,21 @@ export default function App() {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return null;
 
+    const fuzzyMatch = (text: string | undefined, query: string) => {
+      if (!text) return false;
+      const t = text.toLowerCase();
+      if (t.includes(query)) return true;
+      const queryWords = query.split(/\s+/);
+      if (queryWords.length > 1 && queryWords.every((word) => t.includes(word))) return true;
+      let qIdx = 0;
+      const qFiltered = query.replace(/\s+/g, '');
+      for (let i = 0; i < t.length; i++) {
+        if (t[i] === qFiltered[qIdx]) qIdx++;
+        if (qIdx === qFiltered.length) return true;
+      }
+      return false;
+    };
+
     const results: {
       lectures: Lecture[];
       papers: ResearchPaper[];
@@ -328,7 +346,7 @@ export default function App() {
       l.title.toLowerCase().includes(q) || 
       l.subject.toLowerCase().includes(q) || 
       l.generatedNotes.toLowerCase().includes(q) ||
-      l.transcript.toLowerCase().includes(q) ||
+      fuzzyMatch(l.transcript, q) ||
       l.formulas.some((f) => f.expression.toLowerCase().includes(q) || f.description.toLowerCase().includes(q)) ||
       l.qa.some((qa) => qa.question.toLowerCase().includes(q) || qa.answer.toLowerCase().includes(q))
     );
@@ -450,27 +468,45 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#FAF9F5] text-gray-900 font-sans antialiased">
       
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* 1. Left Navigation Sidebar */}
-      <Sidebar 
-        folders={folders}
-        tags={tags}
-        activeFolderId={activeFolderId}
-        activeTagId={activeTagId}
-        activeSection={activeSection}
-        onSelectFolder={(id) => { setActiveFolderId(id); setActiveTagId(null); setSearchQuery(""); }}
-        onSelectTag={(id) => { setActiveTagId(id); setActiveFolderId(null); setSearchQuery(""); }}
-        onSelectSection={(sec) => { setActiveSection(sec); setSearchQuery(""); }}
-        onCreateFolder={handleCreateFolder}
-        onDeleteFolder={handleDeleteFolder}
-        onCreateTag={handleCreateTag}
-      />
+      <div className={`fixed inset-y-0 left-0 transform ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"} md:relative md:translate-x-0 transition duration-300 ease-in-out z-50 md:z-0 flex-shrink-0 h-full`}>
+        <Sidebar 
+          folders={folders}
+          tags={tags}
+          activeFolderId={activeFolderId}
+          activeTagId={activeTagId}
+          activeSection={activeSection}
+          onSelectFolder={(id) => { setActiveFolderId(id); setActiveTagId(null); setSearchQuery(""); setIsMobileMenuOpen(false); }}
+          onSelectTag={(id) => { setActiveTagId(id); setActiveFolderId(null); setSearchQuery(""); setIsMobileMenuOpen(false); }}
+          onSelectSection={(sec) => { setActiveSection(sec); setSearchQuery(""); setIsMobileMenuOpen(false); }}
+          onCreateFolder={handleCreateFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onCreateTag={handleCreateTag}
+          onOpenStorageInspector={() => setIsStorageInspectorOpen(true)}
+        />
+      </div>
 
       {/* Primary Right Workspace Frame */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden w-full relative">
         
         {/* Universal Top Header panel with global search engine */}
-        <div className="bg-white px-8 py-3.5 border-b border-gray-250 flex items-center justify-between shrink-0 shadow-xs">
-          <div className="flex items-center space-x-2 w-full max-w-sm bg-[#FAF9F5] border border-gray-200.5 rounded-xl px-3.5 py-1.5 focus-within:ring-1 focus-within:ring-[#E5A93B] focus-within:border-[#E5A93B] transition-all">
+        <div className="bg-white px-4 md:px-8 py-3.5 border-b border-gray-250 flex items-center justify-between shrink-0 shadow-xs gap-3">
+          <div className="flex flex-1 items-center space-x-2 md:space-x-4">
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="md:hidden p-1 min-w-[28px] text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <Menu size={20} />
+            </button>
+            <div className="flex items-center space-x-2 w-full max-w-sm bg-[#FAF9F5] border border-gray-200.5 rounded-xl px-3.5 py-1.5 focus-within:ring-1 focus-within:ring-[#E5A93B] focus-within:border-[#E5A93B] transition-all">
             <Search size={14} className="text-gray-400 shrink-0" />
             <input 
               type="text" 
@@ -482,9 +518,10 @@ export default function App() {
             {searchQuery && (
               <button onClick={() => setSearchQuery("")} className="text-xs text-gray-400 font-semibold hover:text-gray-600">✕</button>
             )}
+            </div>
           </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-4 hidden sm:flex">
             <div className="text-right">
               <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block leading-3">Offline Index</span>
               <span className="text-xs font-bold text-gray-800 flex items-center justify-end leading-4">
@@ -679,6 +716,10 @@ export default function App() {
         </div>
       )}
 
+      {/* Storage Inspector Modal */}
+      {isStorageInspectorOpen && (
+        <StorageInspectorModal onClose={() => setIsStorageInspectorOpen(false)} />
+      )}
     </div>
   );
 }

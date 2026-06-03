@@ -79,6 +79,7 @@ export interface ResearchPaper {
   readingStatus: 'unread' | 'reading' | 'completed';
   notes: string;
   highlights: { id: string; text: string; comment?: string; page?: number; color: string }[];
+  pdfAnnotations?: { id: string; x: number; y: number; text: string; color: string; page?: number }[];
   folderId: string | null;
   tags: string[];
   attachmentIds: string[]; // references of PDF/media records

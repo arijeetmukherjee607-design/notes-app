@@ -263,13 +263,19 @@ export const AcademicDB = {
 
   async getMediaForParent(parentId: string): Promise<MediaRecord[]> {
     const db = await this.getDB();
+    const all = await this.getAllMediaRecords();
+    return all.filter((m) => m.parentId === parentId);
+  },
+
+  async getAllMediaRecords(): Promise<MediaRecord[]> {
+    const db = await this.getDB();
     const all: MediaRecord[] = await new Promise((resolve, reject) => {
       const tx = db.transaction(STORES.MEDIA, "readonly");
       const req = tx.objectStore(STORES.MEDIA).getAll();
       req.onsuccess = () => resolve(req.result || []);
       req.onerror = () => reject(req.error);
     });
-    return all.filter((m) => m.parentId === parentId);
+    return all;
   },
 
   async saveMediaRecord(media: MediaRecord): Promise<void> {
